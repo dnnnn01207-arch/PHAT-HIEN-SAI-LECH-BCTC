@@ -61,8 +61,7 @@ class FraudDetectionApp:
         with col1:
             st.header("📋 Nhập dữ liệu tài chính")
             input_data = {}
-            
-            
+
             # Tạo các ô nhập liệu cho 13 chỉ số
             for feature in self.features:
                 val_str = st.text_input(f"{feature}", value="0.0")
