@@ -2,9 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-from imblearn.over_sampling import SMOTE
 # --- CẤU HÌNH TRANG ---
 st.set_page_config(page_title="Hệ thống Chẩn đoán Gian lận Tài chính", layout="wide")
 
@@ -21,28 +18,33 @@ class FraudDetectionApp:
 
     @st.cache_resource
     def train_model(_self):
-        """Huấn luyện mô hình mỗi khi ứng dụng khởi chạy"""
+        """Huấn luyện mô hình với class_weight='balanced'"""
         try:
             df = pd.read_csv(_self.data_path)
             X = df[_self.features]
             y = df['Financial_Status']
-            # Tính toán trọng số chính xác hoặc gán các hình phạt lệch mạnh
-            custom_weights = {0: 1, 1: 10, 2: 50} 
-            
+
+            class_counts = y.value_counts()
+
+            # Chỉ dùng class_weight='balanced' — không cần SMOTE.
+            # SMOTE tạo quá nhiều mẫu tổng hợp (306→2253 cho class 2)
+            # khiến model học ranh giới nhiễu, dự đoán sai.
+            # class_weight='balanced' tính w = n/(n_classes*n_j) từ dữ liệu thực,
+            # đủ để bù imbalance mà không cần dữ liệu giả.
             rf = RandomForestClassifier(
-                n_estimators=200, 
-                class_weight=custom_weights, 
-                max_depth=8,              # Ràng buộc độ sâu để ngăn ngừa quá khớp
-                min_samples_leaf=5,       # Yêu cầu các nút lá mang tính tổng quát
+                n_estimators=300,
+                class_weight='balanced',
+                max_depth=12,
+                min_samples_leaf=2,
+                max_features='sqrt',
                 random_state=42,
                 n_jobs=-1
             )
-            # Chỉ huấn luyện mô hình trên dữ liệu huấn luyện đã được phân tách
             rf.fit(X, y)
-            return rf, df
+            return rf, df, class_counts
         except Exception as e:
             st.error(f"Lỗi khi huấn luyện mô hình: {e}")
-            return None, None
+            return None, None, None
 
     def run(self):
         st.title("🛡️ Hệ thống Phát hiện Gian lận Báo cáo Tài chính")
@@ -50,10 +52,21 @@ class FraudDetectionApp:
 
         # Khởi tạo mô hình
         with st.spinner("Đang huấn luyện mô hình thực tế..."):
-            self.model, full_data = self.train_model()
+            self.model, full_data, class_counts = self.train_model()
 
         if self.model is None:
             return
+
+        # Hiển thị thống kê dữ liệu huấn luyện trong sidebar
+        with st.sidebar:
+            st.header("📈 Thông tin mô hình")
+            st.write("**Phân phối class gốc:**")
+            dist_df = pd.DataFrame({
+                'Class': ['0 - Bình thường', '1 - Nghi vấn', '2 - Rủi ro cao'],
+                'Số mẫu': [class_counts.get(0, 0), class_counts.get(1, 0), class_counts.get(2, 0)],
+            })
+            st.dataframe(dist_df, hide_index=True)
+            st.caption("Sử dụng class_weight='balanced' để bù imbalance.")
 
         # Giao diện chính chia làm 2 cột
         col1, col2 = st.columns([1, 2])
